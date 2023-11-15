@@ -3,12 +3,20 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 name = "pypi"
 
+[[source]]
+url = "https://download.pytorch.org/whl/cu121"
+verify_ssl = true
+name = "downloadpytorch"
+
 [packages]
 pandas = "*"
 numpy = "*"
 polars = "*"
 requests = "*"
 img2dataset = "*"
+torch = {version = "==2.1.0", index = "downloadpytorch"}
+torchvision = {version = "==0.16.0", index = "downloadpytorch"}
+lightning = "*"
 
 [dev-packages]
 

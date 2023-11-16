@@ -17,6 +17,9 @@ img2dataset = "*"
 torch = {version = "==2.1.0", index = "downloadpytorch"}
 torchvision = {version = "==0.16.0", index = "downloadpytorch"}
 lightning = "*"
+webdataset = "*"
+matplotlib = "*"
+invisible-watermark = "*"
 
 [dev-packages]
 

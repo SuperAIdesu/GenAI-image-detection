@@ -5,7 +5,7 @@ import webdataset as wds
 
 
 def split_dataset(path, n_train, n_val, n_test, label, domain_label):
-    max_file_size = 10000
+    max_file_size = 1000
     input_files = glob.glob(path + "/*.tar")
     src = wds.WebDataset(input_files)
 

@@ -20,6 +20,7 @@ lightning = "*"
 webdataset = "*"
 matplotlib = "*"
 invisible-watermark = "*"
+torchdata = "*"
 
 [dev-packages]
 

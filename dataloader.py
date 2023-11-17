@@ -3,13 +3,15 @@ import os
 import glob
 import random
 import collections
-import pandas as pd
 import numpy as np
-import webdataset as wds
 import torch, torch.nn as nn, torch.nn.functional as F
+import torchdata as td, torchdata.datapipes as dp
+from typing import Iterator
+from torchdata.datapipes.iter import FileLister, FileOpener, Concater
+from torchdata.dataloader2 import DataLoader2, MultiProcessingReadingService
 from tqdm import tqdm
 from torchvision.transforms import v2
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 from imwatermark import WatermarkEncoder
 from utils_sampling import UnderSampler
 from PIL import ImageFile, Image
@@ -30,6 +32,27 @@ DOMAIN_LABELS = {
     4: "midjourney"
 }
 
+N_SAMPLES = {
+    0: (115346, 14418, 14419),
+    1: (22060, 2757, 2758),
+    4: (21096, 2637, 2637),
+    2: (13582, 1697, 1699),
+    3: (12027, 1503, 1504)
+}
+
+
+@dp.functional_datapipe("collect_from_workers")
+class WorkerResultCollector(dp.iter.IterDataPipe):
+    def __init__(self, source: dp.iter.IterDataPipe):
+        self.source = source
+
+    def __iter__(self) -> Iterator:
+        yield from self.source
+
+    def is_replicable(self) -> bool:
+        """Method to force data back to main process"""
+        return False
+
 
 def crop_bottom(image, cutoff=16):
     return image[:, :-cutoff, :]
@@ -47,13 +70,7 @@ def random_invisible_watermark(image, p=0.2):
     return image
 
 
-def load_dataset(domains: list[int], split: str):
-    laion_path = f"./data/laion400m_data/{split}*.tar"
-    domain_names = [DOMAIN_LABELS[domain] for domain in domains]
-    genai_paths = [f"./data/genai-images/{domain}/{split}*.tar" for domain in domain_names]
-    combined_paths = [laion_path] + genai_paths
-    all_files = [f for path in combined_paths for f in glob.glob(path)]
-
+def build_transform(split: str):
     train_transform = v2.Compose([
         v2.Lambda(crop_bottom),
         v2.RandomCrop((256, 256), pad_if_needed=True),
@@ -67,38 +84,54 @@ def load_dataset(domains: list[int], split: str):
     eval_transform = v2.Compose([
         v2.CenterCrop((256, 256)),
     ])
-
     transform = train_transform if split == "train" else eval_transform
 
-    def identity(x):
-        return x
-
-    dataset = wds.DataPipeline(
-        wds.SimpleShardList(all_files),
-        wds.shuffle(100),
-        wds.tarfile_to_samples(),
-        wds.shuffle(3000, initial=3000),
-        wds.decode("torchrgb"),
-        wds.to_tuple("jpg", "label.cls", "domain_label.cls"),
-        wds.map_tuple(transform, identity, identity),
-        wds.batched(8),
-        wds.shuffle(1000, initial=500),
-        wds.unbatched(),
-    )
-
-    return dataset
+    return transform
 
 
-def load_dataloader(domains: list[int], split: str, batch_size: int = 32, num_workers: int = 8):
-    dataset = load_dataset(domains, split)
+def dp_to_tuple_train(input_dict):
+    transform = build_transform("train")
+    return transform(input_dict[".jpg"]), input_dict[".label.cls"], input_dict[".domain_label.cls"]
 
+
+def dp_to_tuple_eval(input_dict):
+    transform = build_transform("eval")
+    return transform(input_dict[".jpg"]), input_dict[".label.cls"], input_dict[".domain_label.cls"]
+
+
+def load_dataset(domains: list[int], split: str):
+
+    laion_lister = FileLister("./data/laion400m_data", f"{split}*.tar")
+    domain_names = [DOMAIN_LABELS[domain] for domain in domains]
+    genai_listers = [FileLister(f"./data/genai-images/{domain}", f"{split}*.tar") for domain in domain_names]
+    
+    all_listers = Concater(laion_lister, *genai_listers).shuffle().sharding_filter()
+
+    def open_lister(lister):
+        opener = FileOpener(lister, mode="b")
+        return opener.load_from_tar().routed_decode().webdataset()
+    
+    dp = open_lister(all_listers)
+    
     if split == "train":
-        sampler = UnderSampler(dataset, {0: 0.5, 1: 0.5}, seed=42)
-        dataloader = DataLoader(sampler, batch_size=batch_size, num_workers=num_workers)
+        dp = dp.map(dp_to_tuple_train)
     else:
-        dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
+        dp = dp.map(dp_to_tuple_eval)
+    
+    dp = dp.shuffle(buffer_size=3000).batch(8).collect_from_workers().shuffle(buffer_size=1024, unbatch_level=1)
 
-    return dataloader
+    return dp
+
+
+def load_dataloader(domains: list[int], split: str, batch_size: int = 32, num_workers: int = 4):
+    dp = load_dataset(domains, split)
+    # dp = dp.batch(batch_size).collate()
+    # rs = MultiProcessingReadingService(num_workers=num_workers)
+    # dl = DataLoader2(dp, reading_service=rs)
+    sampler = UnderSampler(dp, {0: 0.5, 1: 0.5}, seed=42)
+    dl = DataLoader(sampler, batch_size=batch_size, num_workers=num_workers)
+
+    return dl
 
     
 if __name__ == "__main__":

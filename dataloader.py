@@ -13,7 +13,7 @@ from tqdm import tqdm
 from torchvision.transforms import v2
 from torch.utils.data import DataLoader, RandomSampler
 from imwatermark import WatermarkEncoder
-from utils_sampling import UnderSampler
+from utils_sampling import UnderSamplerIterDataPipe
 from PIL import ImageFile, Image
 
 
@@ -125,11 +125,11 @@ def load_dataset(domains: list[int], split: str):
 
 def load_dataloader(domains: list[int], split: str, batch_size: int = 32, num_workers: int = 4):
     dp = load_dataset(domains, split)
-    # dp = dp.batch(batch_size).collate()
-    # rs = MultiProcessingReadingService(num_workers=num_workers)
-    # dl = DataLoader2(dp, reading_service=rs)
-    sampler = UnderSampler(dp, {0: 0.5, 1: 0.5}, seed=42)
-    dl = DataLoader(sampler, batch_size=batch_size, num_workers=num_workers)
+    if split == "train":
+        dp = UnderSamplerIterDataPipe(dp, {0: 0.5, 1: 0.5}, seed=42)
+    dp = dp.batch(batch_size).collate()
+    rs = MultiProcessingReadingService(num_workers=num_workers)
+    dl = DataLoader2(dp, reading_service=rs)
 
     return dl
 

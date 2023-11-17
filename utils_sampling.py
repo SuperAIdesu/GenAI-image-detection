@@ -2,13 +2,14 @@ import collections
 import random
 import torch
 from typing import Callable
+from torchdata.datapipes.iter import IterDataPipe
 
 
 def get_second_entry(sample):
     return sample[1]
 
 
-class UnderSampler(torch.utils.data.IterableDataset):
+class UnderSamplerIterDataPipe(IterDataPipe):
     """Dataset wrapper for under-sampling.
 
     Copied from: https://github.com/MaxHalford/pytorch-resample/blob/master/pytorch_resample/under.py
@@ -37,7 +38,7 @@ class UnderSampler(torch.utils.data.IterableDataset):
 
     """
 
-    def __init__(self, dataset: torch.utils.data.IterableDataset, desired_dist: dict,
+    def __init__(self, dataset: IterDataPipe, desired_dist: dict,
                  label_getter: Callable = get_second_entry, seed: int = None):
 
         self.dataset = dataset

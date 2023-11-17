@@ -58,3 +58,13 @@ DOMAIN_LABELS = {
     4: "midjourney"
 }
 ```
+
+The `load_dataloader()` function in `dataloader.py` returns a `torchdata.dataloader2.DataLoader2` given a list of domains for GenAI images(subset of `[1, 2, 3, 4]`, LAION will always be included). When building the training dataset, data augmentation and class balanced sampling are applied. It is very memory intensive(>20G) and takes some time to fill its buffer before producing batches. Use the dataloader in this way:
+
+```
+for epoch in range(10):
+    dl.seed(epoch)
+    for d in dl:
+        model(d)
+dl.shutdown()
+```

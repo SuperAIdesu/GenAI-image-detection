@@ -73,7 +73,7 @@ def random_invisible_watermark(image, p=0.2):
     elif image_np.shape[2] == 4:  # RGBA image
         image_np = cv2.cvtColor(image_np, cv2.COLOR_RGBA2BGR)
 
-    print(image_np.shape)
+    #print(image_np.shape)
     if image_np.shape[0] < 256 or image_np.shape[1] < 256:
         image_np = cv2.resize(image_np, (256, 256), interpolation=cv2.INTER_AREA)
     if random.random() < p:
@@ -87,15 +87,12 @@ def build_transform(split: str):
         v2.RandomCrop((256, 256), pad_if_needed=True),
         v2.Lambda(random_gaussian_blur),
         v2.RandomGrayscale(p=0.05),
-        v2.ToPILImage(),
-        v2.ToTensor(),
         v2.Lambda(random_invisible_watermark),
         v2.ToImage()
     ])
 
     eval_transform = v2.Compose([
         v2.CenterCrop((256, 256)),
-        v2.ToTensor(),
         ])
     transform = train_transform if split == "train" else eval_transform
 

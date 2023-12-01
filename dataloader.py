@@ -15,6 +15,7 @@ from torch.utils.data import DataLoader, RandomSampler
 from imwatermark import WatermarkEncoder
 from utils_sampling import UnderSamplerIterDataPipe
 from PIL import ImageFile, Image
+import cv2
 
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -64,10 +65,20 @@ def random_gaussian_blur(image, p=0.01):
     return image
 
 def random_invisible_watermark(image, p=0.2):
-    image = np.array(image)
+    image_np = np.array(image)
+    image_np = np.transpose(image_np, (1, 2, 0))
+
+    if image_np.ndim == 2:  # Grayscale image
+        image_np = cv2.cvtColor(image_np, cv2.COLOR_GRAY2BGR)
+    elif image_np.shape[2] == 4:  # RGBA image
+        image_np = cv2.cvtColor(image_np, cv2.COLOR_RGBA2BGR)
+
+    print(image_np.shape)
+    if image_np.shape[0] < 256 or image_np.shape[1] < 256:
+        image_np = cv2.resize(image_np, (256, 256), interpolation=cv2.INTER_AREA)
     if random.random() < p:
-        return encoder.encode(image, method='dwtDct')
-    return image
+        return encoder.encode(image_np, method='dwtDct')
+    return image_np
 
 
 def build_transform(split: str):
@@ -77,13 +88,15 @@ def build_transform(split: str):
         v2.Lambda(random_gaussian_blur),
         v2.RandomGrayscale(p=0.05),
         v2.ToPILImage(),
+        v2.ToTensor(),
         v2.Lambda(random_invisible_watermark),
         v2.ToImage()
     ])
 
     eval_transform = v2.Compose([
         v2.CenterCrop((256, 256)),
-    ])
+        v2.ToTensor(),
+        ])
     transform = train_transform if split == "train" else eval_transform
 
     return transform
@@ -102,7 +115,7 @@ def dp_to_tuple_eval(input_dict):
 def load_dataset(domains: list[int], split: str):
 
     laion_lister = FileLister("./data/laion400m_data", f"{split}*.tar")
-    domain_names = [DOMAIN_LABELS[domain] for domain in domains]
+    domain_names = [DOMAIN_LABELS[domain] for domain in domains if DOMAIN_LABELS[domain] != "laion"]
     genai_listers = [FileLister(f"./data/genai-images/{domain}", f"{split}*.tar") for domain in domain_names]
     
     all_listers = Concater(laion_lister, *genai_listers).shuffle().sharding_filter()

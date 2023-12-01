@@ -59,7 +59,9 @@ class ImageClassifier(pl.LightningModule):
         return optimizer
 
     def train_dataloader(self):
-        return load_dataloader(train_domains, "train", batch_size=32, num_workers=4)
+        dl = load_dataloader(train_domains, "train", batch_size=32, num_workers=4)
+        dl.seed(self.current_epoch)
+        return dl
     
     def val_dataloader(self):
         return load_dataloader(val_domains, "eval", batch_size=32, num_workers=4)

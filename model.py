@@ -79,5 +79,5 @@ train_domains = [0, 1]
 val_domains = [0, 1]  
 
 model = ImageClassifier()
-trainer = pl.Trainer(accelerator='gpu',devices=1, callbacks=[checkpoint_callback],max_epochs=10)
+trainer = pl.Trainer(accelerator='gpu',devices=1, callbacks=[checkpoint_callback],max_epochs=10, reload_dataloaders_every_epoch=True)
 trainer.fit(model)

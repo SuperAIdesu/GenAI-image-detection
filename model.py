@@ -17,10 +17,6 @@ class ImageClassifier(pl.LightningModule):
         self.recall = Recall(task='binary', threshold=0.5)  
         self.validation_outputs = []
         logging.basicConfig(level=logging.INFO)
-    
-    def setup(self, stage):
-        self.train_dl = load_dataloader(train_domains, "train", batch_size=32, num_workers=4)
-        self.val_dl = load_dataloader(val_domains, "val", batch_size=32, num_workers=4)
 
     def forward(self, x):
         return self.model(x)
@@ -33,11 +29,8 @@ class ImageClassifier(pl.LightningModule):
         return loss
 
     def on_train_epoch_start(self):
-        self.train_dl.seed(self.current_epoch)
+        self.trainer.train_dataloader.seed(self.current_epoch)
     
-    def on_train_end(self):
-        self.train_dl.shutdown()
-
     def validation_step(self, batch):
         images, labels, _ = batch
         outputs = self.forward(images).squeeze()
@@ -67,11 +60,6 @@ class ImageClassifier(pl.LightningModule):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
         return optimizer
 
-    def train_dataloader(self):
-        return self.train_dl
-    
-    def val_dataloader(self):
-        return self.val_dl
 
 checkpoint_callback = ModelCheckpoint(
     monitor='val_loss',
@@ -86,5 +74,10 @@ train_domains = [0, 1]
 val_domains = [0, 1]  
 
 model = ImageClassifier()
-trainer = pl.Trainer(accelerator='gpu',devices=1, callbacks=[checkpoint_callback],max_epochs=10)
-trainer.fit(model)
+train_dl = load_dataloader(train_domains, "train", batch_size=32, num_workers=4)
+logging.info("Training dataloader loaded")
+val_dl = load_dataloader(val_domains, "val", batch_size=32, num_workers=4)
+logging.info("Validation dataloader loaded")
+
+trainer = pl.Trainer(callbacks=[checkpoint_callback],max_epochs=10)
+trainer.fit(model, train_dl, val_dl)

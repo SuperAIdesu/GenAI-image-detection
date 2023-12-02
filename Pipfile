@@ -21,6 +21,7 @@ webdataset = "*"
 matplotlib = "*"
 invisible-watermark = "*"
 torchdata = "*"
+timm = "*"
 
 [dev-packages]
 

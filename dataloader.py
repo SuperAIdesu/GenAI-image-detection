@@ -150,7 +150,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # testing code
-    dl = load_dataloader([1, 4], "train")
+    dl = load_dataloader([0, 1], "train")
     y_dist = collections.Counter()
     d_dist = collections.Counter()
 

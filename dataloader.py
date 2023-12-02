@@ -128,7 +128,10 @@ def load_dataset(domains: list[int], split: str):
     else:
         dp = dp.map(dp_to_tuple_eval)
     
-    dp = dp.shuffle(buffer_size=3000).batch(8).collect_from_workers().shuffle(buffer_size=1024, unbatch_level=1)
+    buffer_size1 = 3000 if split == "train" else 10
+    buffer_size2 = 1024 if split == "train" else 10
+
+    dp = dp.shuffle(buffer_size=buffer_size1).batch(8).collect_from_workers().shuffle(buffer_size=buffer_size2, unbatch_level=1)
 
     return dp
 
@@ -138,8 +141,9 @@ def load_dataloader(domains: list[int], split: str, batch_size: int = 32, num_wo
     if split == "train":
         dp = UnderSamplerIterDataPipe(dp, {0: 0.5, 1: 0.5}, seed=42)
     dp = dp.batch(batch_size).collate()
-    rs = MultiProcessingReadingService(num_workers=num_workers)
-    dl = DataLoader2(dp, reading_service=rs)
+    dl = DataLoader(dp, batch_size=None, num_workers=num_workers, pin_memory=True)
+    # rs = MultiProcessingReadingService(num_workers=num_workers)
+    # dl = DataLoader2Workaround(dp, reading_service=rs)
 
     return dl
 
@@ -150,17 +154,22 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # testing code
-    dl = load_dataloader([0, 1], "train")
+    dl = load_dataloader([0, 1], "train", num_workers=8)
+    # dl.seed(0)
     y_dist = collections.Counter()
     d_dist = collections.Counter()
 
     for i, (img, y, d) in tqdm(enumerate(dl)):
-        if i > 197:
-            print(y, d)
-        if i == 200:
-            break
         y_dist.update(y.numpy())
         d_dist.update(d.numpy())
+
+    # dl.seed(1)
+
+    for i, (img, y, d) in tqdm(enumerate(dl)):
+        if i > 98:
+            print(y, d)
+        if i == 100:
+            break
     
     print("class label")
     for label in sorted(y_dist):

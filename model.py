@@ -28,8 +28,8 @@ class ImageClassifier(pl.LightningModule):
         logging.info(f"Training Step - Batch loss: {loss.item()}")
         return loss
 
-    def on_train_epoch_start(self):
-        self.trainer.train_dataloader.seed(self.current_epoch)
+    # def on_train_epoch_start(self):
+    #     self.trainer.train_dataloader.seed(self.current_epoch)
     
     def validation_step(self, batch):
         images, labels, _ = batch
@@ -51,6 +51,9 @@ class ImageClassifier(pl.LightningModule):
             return
         preds = torch.cat([x['preds'] for x in self.validation_outputs])
         labels = torch.cat([x['labels'] for x in self.validation_outputs])
+        if labels.unique().size(0) == 1:
+            logging.warning("Only one class in validation step")
+            return
         auc_score = roc_auc_score(labels.cpu(), preds.cpu())
         self.log('val_auc', auc_score, prog_bar=True)
         logging.info(f"Validation Epoch End - AUC score: {auc_score}")
@@ -74,9 +77,9 @@ train_domains = [0, 1]
 val_domains = [0, 1]  
 
 model = ImageClassifier()
-train_dl = load_dataloader(train_domains, "train", batch_size=32, num_workers=4)
+train_dl = load_dataloader(train_domains, "train", batch_size=32, num_workers=8)
 logging.info("Training dataloader loaded")
-val_dl = load_dataloader(val_domains, "val", batch_size=32, num_workers=4)
+val_dl = load_dataloader(val_domains, "val", batch_size=32, num_workers=8)
 logging.info("Validation dataloader loaded")
 
 trainer = pl.Trainer(callbacks=[checkpoint_callback],max_epochs=10)

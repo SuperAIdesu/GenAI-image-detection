@@ -8,6 +8,7 @@ from dataloader import *
 from utils_sampling import *
 from data_split import *
 import logging
+import os
 
 class ImageClassifier(pl.LightningModule):
     def __init__(self):
@@ -76,7 +77,22 @@ checkpoint_callback = ModelCheckpoint(
 train_domains = [0, 1]  
 val_domains = [0, 1]  
 
+checkpoint_dir = './model_checkpoints/'
+latest_checkpoint = None
+
+if os.path.exists(checkpoint_dir):
+    checkpoints = [os.path.join(checkpoint_dir, f) for f in os.listdir(checkpoint_dir) if f.endswith('.ckpt')]
+    if checkpoints:
+        latest_checkpoint = max(checkpoints, key=os.path.getctime)
+        logging.info(f"Resuming from checkpoint: {latest_checkpoint}")
+    else:
+        logging.info("No checkpoint found. Starting from scratch.")
+
 model = ImageClassifier()
+
+if latest_checkpoint:
+    model = model.load_from_checkpoint(latest_checkpoint)
+
 train_dl = load_dataloader(train_domains, "train", batch_size=32, num_workers=8)
 logging.info("Training dataloader loaded")
 val_dl = load_dataloader(val_domains, "val", batch_size=32, num_workers=8)

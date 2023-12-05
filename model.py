@@ -17,7 +17,7 @@ class ImageClassifier(pl.LightningModule):
         self.accuracy = Accuracy(task='binary', threshold=0.5)
         self.recall = Recall(task='binary', threshold=0.5)  
         self.validation_outputs = []
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(filename='training.log',filemode='w',level=logging.INFO)
 
     def forward(self, x):
         return self.model(x)
@@ -25,22 +25,26 @@ class ImageClassifier(pl.LightningModule):
     def training_step(self, batch):
         images, labels, _ = batch
         outputs = self.forward(images).squeeze()
+        
+        print(f"Shape of outputs (training): {outputs.shape}")
+        print(f"Shape of labels (training): {labels.shape}")
+        
         loss = F.binary_cross_entropy_with_logits(outputs, labels.float())
         logging.info(f"Training Step - Batch loss: {loss.item()}")
         return loss
 
-    # def on_train_epoch_start(self):
-    #     self.trainer.train_dataloader.seed(self.current_epoch)
-    
     def validation_step(self, batch):
         images, labels, _ = batch
         outputs = self.forward(images).squeeze()
+        
+        print(f"Shape of outputs (validation): {outputs.shape}")
+        print(f"Shape of labels (validation): {labels.shape}")
+
         loss = F.binary_cross_entropy_with_logits(outputs, labels.float())
         preds = torch.sigmoid(outputs)
         self.log('val_loss', loss, prog_bar=True)
         self.log('val_acc', self.accuracy(preds, labels.int()), prog_bar=True)
         self.log('val_recall', self.recall(preds, labels.int()), prog_bar=True)  
-        #return {"val_loss": loss, "preds": preds, "labels": labels}
         output = {"val_loss": loss, "preds": preds, "labels": labels}
         self.validation_outputs.append(output)
         logging.info(f"Validation Step - Batch loss: {loss.item()}")
@@ -91,7 +95,7 @@ if os.path.exists(checkpoint_dir):
 model = ImageClassifier()
 
 if latest_checkpoint:
-    model = model.load_from_checkpoint(latest_checkpoint)
+    model = ImageClassifier.load_from_checkpoint(latest_checkpoint)
 
 train_dl = load_dataloader(train_domains, "train", batch_size=32, num_workers=8)
 logging.info("Training dataloader loaded")

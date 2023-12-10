@@ -84,7 +84,7 @@ checkpoint_callback = ModelCheckpoint(
     filename='image-classifier-{step}-{val_loss:.2f}',
     save_top_k=3,
     mode='min',
-    every_n_train_steps=1000,
+    every_n_train_steps=1001,
     enable_version_counter=True
 )
 

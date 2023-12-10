@@ -100,13 +100,15 @@ if os.path.exists(checkpoint_dir):
 
 model = ImageClassifier()
 
-if latest_checkpoint:
-    model = ImageClassifier.load_from_checkpoint(latest_checkpoint)
-
 train_dl = load_dataloader(train_domains, "train", batch_size=32, num_workers=8)
 logging.info("Training dataloader loaded")
 val_dl = load_dataloader(val_domains, "val", batch_size=32, num_workers=8)
 logging.info("Validation dataloader loaded")
 
 trainer = pl.Trainer(callbacks=[checkpoint_callback],max_epochs=10)
-trainer.fit(model, train_dl, val_dl)
+trainer.fit(
+    model=model, 
+    train_dataloaders=train_dl,
+    val_dataloaders=val_dl,
+    ckpt_path=latest_checkpoint
+)

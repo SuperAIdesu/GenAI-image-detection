@@ -141,7 +141,7 @@ def load_dataloader(domains: list[int], split: str, batch_size: int = 32, num_wo
     if split == "train":
         dp = UnderSamplerIterDataPipe(dp, {0: 0.5, 1: 0.5}, seed=42)
     dp = dp.batch(batch_size).collate()
-    dl = DataLoader(dp, batch_size=None, num_workers=num_workers, pin_memory=True)
+    dl = DataLoader(dp, batch_size=None, num_workers=num_workers, pin_memory=True, drop_last=True)
     # rs = MultiProcessingReadingService(num_workers=num_workers)
     # dl = DataLoader2Workaround(dp, reading_service=rs)
 

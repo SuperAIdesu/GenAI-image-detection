@@ -1,6 +1,7 @@
 data/
 lightning_logs/
 model_checkpoints/
+outputs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

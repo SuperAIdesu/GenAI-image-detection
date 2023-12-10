@@ -1,6 +1,7 @@
 from sklearn.metrics import roc_auc_score
 from torchmetrics import Accuracy, Recall
 import pytorch_lightning as pl
+import pandas as pd
 import timm  
 import torch
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
@@ -8,6 +9,7 @@ from dataloader import *
 from utils_sampling import *
 from data_split import *
 import logging
+import argparse
 import os
 
 logging.basicConfig(filename='training.log',filemode='w',level=logging.INFO, force=True)
@@ -50,6 +52,12 @@ class ImageClassifier(pl.LightningModule):
         self.validation_outputs.append(output)
         logging.info(f"Validation Step - Batch loss: {loss.item()}")
         return output
+    
+    def predict_step(self, batch):
+        images, label, domain = batch
+        outputs = self.forward(images).squeeze()
+        preds = torch.sigmoid(outputs)
+        return preds, label, domain
 
     def on_validation_epoch_end(self):
         if not self.validation_outputs:
@@ -86,36 +94,54 @@ early_stop_callback = EarlyStopping(
     mode="min",
 )
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--ckpt_path", help="checkpoint to continue from", required=False)
+parser.add_argument("--predict", help="predict on test set", action="store_true")
+args = parser.parse_args()
+
 train_domains = [0, 1]  
 val_domains = [0, 1]  
 
-checkpoint_dir = './model_checkpoints/'
-latest_checkpoint = None
+# checkpoint_dir = './model_checkpoints/'
+# latest_checkpoint = None
 
-if os.path.exists(checkpoint_dir):
-    checkpoints = [os.path.join(checkpoint_dir, f) for f in os.listdir(checkpoint_dir) if f.endswith('.ckpt')]
-    if checkpoints:
-        latest_checkpoint = max(checkpoints, key=os.path.getctime)
-        logging.info(f"Resuming from checkpoint: {latest_checkpoint}")
-    else:
-        logging.info("No checkpoint found. Starting from scratch.")
+# if os.path.exists(checkpoint_dir):
+#     checkpoints = [os.path.join(checkpoint_dir, f) for f in os.listdir(checkpoint_dir) if f.endswith('.ckpt')]
+#     if checkpoints:
+#         latest_checkpoint = max(checkpoints, key=os.path.getctime)
+#         logging.info(f"Resuming from checkpoint: {latest_checkpoint}")
+#     else:
+#         logging.info("No checkpoint found. Starting from scratch.")
 
-model = ImageClassifier()
+if args.predict:
+    test_dl = load_dataloader([0, 1, 2, 3, 4], "test", batch_size=32, num_workers=8)
+    model = ImageClassifier.load_from_checkpoint(args.ckpt_path)
+    trainer = pl.Trainer()
+    predictions = trainer.predict(model, dataloaders=test_dl)
+    preds, labels, domains = zip(*predictions)
+    preds = torch.cat(preds).cpu().numpy()
+    labels = torch.cat(labels).cpu().numpy()
+    domains = torch.cat(domains).cpu().numpy()
+    print(preds.shape, labels.shape, domains.shape)
+    df = pd.DataFrame({"preds": preds, "labels": labels, "domains": domains})
+    filename = "preds-" + args.ckpt_path.split("/")[-1]
+    df.to_csv(f"outputs/{filename}.csv", index=False)
+else:
+    model = ImageClassifier()
+    train_dl = load_dataloader(train_domains, "train", batch_size=32, num_workers=8)
+    logging.info("Training dataloader loaded")
+    val_dl = load_dataloader(val_domains, "val", batch_size=32, num_workers=8)
+    logging.info("Validation dataloader loaded")
 
-train_dl = load_dataloader(train_domains, "train", batch_size=32, num_workers=8)
-logging.info("Training dataloader loaded")
-val_dl = load_dataloader(val_domains, "val", batch_size=32, num_workers=8)
-logging.info("Validation dataloader loaded")
-
-trainer = pl.Trainer(
-    callbacks=[checkpoint_callback, early_stop_callback],
-    max_steps=20000,
-    val_check_interval=1000,
-    check_val_every_n_epoch=None
-)
-trainer.fit(
-    model=model, 
-    train_dataloaders=train_dl,
-    val_dataloaders=val_dl,
-    ckpt_path=latest_checkpoint
-)
+    trainer = pl.Trainer(
+        callbacks=[checkpoint_callback, early_stop_callback],
+        max_steps=20000,
+        val_check_interval=1000,
+        check_val_every_n_epoch=None
+    )
+    trainer.fit(
+        model=model, 
+        train_dataloaders=train_dl,
+        val_dataloaders=val_dl,
+        ckpt_path=args.ckpt_path
+    )

@@ -10,6 +10,8 @@ from data_split import *
 import logging
 import os
 
+logging.basicConfig(filename='training.log',filemode='w',level=logging.INFO, force=True)
+
 class ImageClassifier(pl.LightningModule):
     def __init__(self):
         super().__init__()
@@ -17,10 +19,14 @@ class ImageClassifier(pl.LightningModule):
         self.accuracy = Accuracy(task='binary', threshold=0.5)
         self.recall = Recall(task='binary', threshold=0.5)  
         self.validation_outputs = []
-        logging.basicConfig(filename='training.log',filemode='w',level=logging.INFO)
 
     def forward(self, x):
         return self.model(x)
+
+    def on_train_epoch_start(self):
+        current_epoch = self.current_epoch
+        logging.info(f"Starting Training Epoch: {current_epoch}")
+        self.log('current_epoch', int(current_epoch))
 
     def training_step(self, batch):
         images, labels, _ = batch
@@ -72,7 +78,7 @@ class ImageClassifier(pl.LightningModule):
 checkpoint_callback = ModelCheckpoint(
     monitor='val_loss',
     dirpath='./model_checkpoints/',
-    filename='image-classifier-{epoch:02d}-{val_loss:.2f}',
+    filename='image-classifier-{current_epoch:02d}-{val_loss:.2f}',
     save_top_k=3,
     mode='min',
     every_n_epochs=1,

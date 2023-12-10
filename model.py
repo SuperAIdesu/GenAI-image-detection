@@ -3,7 +3,7 @@ from torchmetrics import Accuracy, Recall
 import pytorch_lightning as pl
 import timm  
 import torch
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from dataloader import *
 from utils_sampling import *
 from data_split import *
@@ -22,11 +22,6 @@ class ImageClassifier(pl.LightningModule):
 
     def forward(self, x):
         return self.model(x)
-
-    def on_train_epoch_start(self):
-        current_epoch = self.current_epoch
-        logging.info(f"Starting Training Epoch: {current_epoch}")
-        self.log('current_epoch', int(current_epoch))
 
     def training_step(self, batch):
         images, labels, _ = batch
@@ -48,9 +43,9 @@ class ImageClassifier(pl.LightningModule):
 
         loss = F.binary_cross_entropy_with_logits(outputs, labels.float())
         preds = torch.sigmoid(outputs)
-        self.log('val_loss', loss, prog_bar=True)
-        self.log('val_acc', self.accuracy(preds, labels.int()), prog_bar=True)
-        self.log('val_recall', self.recall(preds, labels.int()), prog_bar=True)  
+        self.log('val_loss', loss, prog_bar=True, sync_dist=True)
+        self.log('val_acc', self.accuracy(preds, labels.int()), prog_bar=True, sync_dist=True)
+        self.log('val_recall', self.recall(preds, labels.int()), prog_bar=True, sync_dist=True)
         output = {"val_loss": loss, "preds": preds, "labels": labels}
         self.validation_outputs.append(output)
         logging.info(f"Validation Step - Batch loss: {loss.item()}")
@@ -66,7 +61,7 @@ class ImageClassifier(pl.LightningModule):
             logging.warning("Only one class in validation step")
             return
         auc_score = roc_auc_score(labels.cpu(), preds.cpu())
-        self.log('val_auc', auc_score, prog_bar=True)
+        self.log('val_auc', auc_score, prog_bar=True, sync_dist=True)
         logging.info(f"Validation Epoch End - AUC score: {auc_score}")
         self.validation_outputs = []
 
@@ -78,10 +73,17 @@ class ImageClassifier(pl.LightningModule):
 checkpoint_callback = ModelCheckpoint(
     monitor='val_loss',
     dirpath='./model_checkpoints/',
-    filename='image-classifier-{current_epoch:02d}-{val_loss:.2f}',
+    filename='image-classifier-{step}-{val_loss:.2f}',
     save_top_k=3,
     mode='min',
-    every_n_epochs=1,
+    every_n_train_steps=1000,
+    enable_version_counter=True
+)
+
+early_stop_callback = EarlyStopping(
+    monitor="val_loss",
+    patience=3,
+    mode="min",
 )
 
 train_domains = [0, 1]  
@@ -105,7 +107,12 @@ logging.info("Training dataloader loaded")
 val_dl = load_dataloader(val_domains, "val", batch_size=32, num_workers=8)
 logging.info("Validation dataloader loaded")
 
-trainer = pl.Trainer(callbacks=[checkpoint_callback],max_epochs=10)
+trainer = pl.Trainer(
+    callbacks=[checkpoint_callback, early_stop_callback],
+    max_steps=20000,
+    val_check_interval=1000,
+    check_val_every_n_epoch=None
+)
 trainer.fit(
     model=model, 
     train_dataloaders=train_dl,

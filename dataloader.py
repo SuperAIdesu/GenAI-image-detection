@@ -7,7 +7,7 @@ import numpy as np
 import torch, torch.nn as nn, torch.nn.functional as F
 import torchdata as td, torchdata.datapipes as dp
 from typing import Iterator
-from torchdata.datapipes.iter import FileLister, FileOpener, Concater
+from torchdata.datapipes.iter import FileLister, FileOpener, Concater, SampleMultiplexer
 from torchdata.dataloader2 import DataLoader2, MultiProcessingReadingService
 from tqdm import tqdm
 from torchvision.transforms import v2
@@ -112,38 +112,38 @@ def dp_to_tuple_eval(input_dict):
 def load_dataset(domains: list[int], split: str):
 
     laion_lister = FileLister("./data/laion400m_data", f"{split}*.tar")
-    domain_names = [DOMAIN_LABELS[domain] for domain in domains if DOMAIN_LABELS[domain] != "laion"]
-    genai_listers = [FileLister(f"./data/genai-images/{domain}", f"{split}*.tar") for domain in domain_names]
+    genai_lister = {d: FileLister(f"./data/genai-images/{DOMAIN_LABELS[d]}", f"{split}*.tar") for d in domains if DOMAIN_LABELS[d] != "laion"}
     
-    all_listers = Concater(laion_lister, *genai_listers).shuffle().sharding_filter()
-
     def open_lister(lister):
         opener = FileOpener(lister, mode="b")
         return opener.load_from_tar().routed_decode().webdataset()
-    
-    dp = open_lister(all_listers)
+
+    buffer_size1 = 100 if split == "train" else 10
+    buffer_size2 = 100 if split == "train" else 10
+
+    if split != "train":
+        all_lister = [laion_lister] + list(genai_lister.values())
+        dp = open_lister(Concater(*all_lister)).sharding_filter()
+    else:
+        laion_dp = open_lister(laion_lister.shuffle()).cycle().sharding_filter().shuffle(buffer_size=buffer_size1)
+        genai_dp = {open_lister(genai_lister[d].shuffle()).cycle().sharding_filter().shuffle(buffer_size=buffer_size1): 1 for d in domains if DOMAIN_LABELS[d] != "laion"}
+        dp = SampleMultiplexer({laion_dp: 1, **genai_dp}).shuffle(buffer_size=buffer_size2)
     
     if split == "train":
         dp = dp.map(dp_to_tuple_train)
     else:
         dp = dp.map(dp_to_tuple_eval)
-    
-    buffer_size1 = 3000 if split == "train" else 10
-    buffer_size2 = 1024 if split == "train" else 10
 
-    dp = dp.shuffle(buffer_size=buffer_size1).batch(8).collect_from_workers().shuffle(buffer_size=buffer_size2, unbatch_level=1)
 
     return dp
 
 
 def load_dataloader(domains: list[int], split: str, batch_size: int = 32, num_workers: int = 4):
     dp = load_dataset(domains, split)
-    if split == "train":
-        dp = UnderSamplerIterDataPipe(dp, {0: 0.5, 1: 0.5}, seed=42)
+    # if split == "train":
+    #     dp = UnderSamplerIterDataPipe(dp, {0: 0.5, 1: 0.5}, seed=42)
     dp = dp.batch(batch_size).collate()
-    dl = DataLoader(dp, batch_size=None, num_workers=num_workers, pin_memory=True, drop_last=True)
-    # rs = MultiProcessingReadingService(num_workers=num_workers)
-    # dl = DataLoader2Workaround(dp, reading_service=rs)
+    dl = DataLoader(dp, batch_size=None, num_workers=num_workers, pin_memory=True)
 
     return dl
 
@@ -155,21 +155,16 @@ if __name__ == "__main__":
 
     # testing code
     dl = load_dataloader([0, 1], "train", num_workers=8)
-    # dl.seed(0)
     y_dist = collections.Counter()
     d_dist = collections.Counter()
 
     for i, (img, y, d) in tqdm(enumerate(dl)):
+        if i % 100 == 0:
+            print(y, d)
+        if i == 400:
+            break
         y_dist.update(y.numpy())
         d_dist.update(d.numpy())
-
-    # dl.seed(1)
-
-    for i, (img, y, d) in tqdm(enumerate(dl)):
-        if i > 98:
-            print(y, d)
-        if i == 100:
-            break
     
     print("class label")
     for label in sorted(y_dist):

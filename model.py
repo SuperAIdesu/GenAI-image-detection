@@ -39,6 +39,9 @@ class ImageClassifier(pl.LightningModule):
     def validation_step(self, batch):
         images, labels, _ = batch
         outputs = self.forward(images).squeeze()
+
+        if outputs.shape == torch.Size([]):
+            return
         
         print(f"Shape of outputs (validation): {outputs.shape}")
         print(f"Shape of labels (validation): {labels.shape}")
@@ -100,8 +103,8 @@ parser.add_argument("--predict", help="predict on test set", action="store_true"
 parser.add_argument("--reset", help="reset training", action="store_true")
 args = parser.parse_args()
 
-train_domains = [0, 1, 4]
-val_domains = [0, 1, 4]
+train_domains = [0, 1, 4, 2]
+val_domains = [0, 1, 4, 2]
 
 if args.predict:
     test_dl = load_dataloader([0, 1, 2, 3, 4], "test", batch_size=32, num_workers=8)

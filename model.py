@@ -90,28 +90,18 @@ checkpoint_callback = ModelCheckpoint(
 
 early_stop_callback = EarlyStopping(
     monitor="val_loss",
-    patience=3,
+    patience=2,
     mode="min",
 )
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ckpt_path", help="checkpoint to continue from", required=False)
 parser.add_argument("--predict", help="predict on test set", action="store_true")
+parser.add_argument("--reset", help="reset training", action="store_true")
 args = parser.parse_args()
 
-train_domains = [0, 1]  
-val_domains = [0, 1]  
-
-# checkpoint_dir = './model_checkpoints/'
-# latest_checkpoint = None
-
-# if os.path.exists(checkpoint_dir):
-#     checkpoints = [os.path.join(checkpoint_dir, f) for f in os.listdir(checkpoint_dir) if f.endswith('.ckpt')]
-#     if checkpoints:
-#         latest_checkpoint = max(checkpoints, key=os.path.getctime)
-#         logging.info(f"Resuming from checkpoint: {latest_checkpoint}")
-#     else:
-#         logging.info("No checkpoint found. Starting from scratch.")
+train_domains = [0, 1, 4]
+val_domains = [0, 1, 4]
 
 if args.predict:
     test_dl = load_dataloader([0, 1, 2, 3, 4], "test", batch_size=32, num_workers=8)
@@ -127,12 +117,15 @@ if args.predict:
     filename = "preds-" + args.ckpt_path.split("/")[-1]
     df.to_csv(f"outputs/{filename}.csv", index=False)
 else:
-    model = ImageClassifier()
     train_dl = load_dataloader(train_domains, "train", batch_size=32, num_workers=8)
     logging.info("Training dataloader loaded")
     val_dl = load_dataloader(val_domains, "val", batch_size=32, num_workers=8)
     logging.info("Validation dataloader loaded")
 
+    if args.reset:
+        model = ImageClassifier.load_from_checkpoint(args.ckpt_path)
+    else:
+        model = ImageClassifier()
     trainer = pl.Trainer(
         callbacks=[checkpoint_callback, early_stop_callback],
         max_steps=20000,
@@ -143,5 +136,5 @@ else:
         model=model, 
         train_dataloaders=train_dl,
         val_dataloaders=val_dl,
-        ckpt_path=args.ckpt_path
+        ckpt_path=args.ckpt_path if not args.reset else None
     )

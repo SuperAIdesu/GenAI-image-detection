@@ -93,7 +93,7 @@ checkpoint_callback = ModelCheckpoint(
 
 early_stop_callback = EarlyStopping(
     monitor="val_loss",
-    patience=2,
+    patience=3,
     mode="min",
 )
 
@@ -103,8 +103,8 @@ parser.add_argument("--predict", help="predict on test set", action="store_true"
 parser.add_argument("--reset", help="reset training", action="store_true")
 args = parser.parse_args()
 
-train_domains = [0, 1, 4, 2]
-val_domains = [0, 1, 4, 2]
+train_domains = [0, 1, 4, 2, 3]
+val_domains = [0, 1, 4, 2, 3]
 
 if args.predict:
     test_dl = load_dataloader([0, 1, 2, 3, 4], "test", batch_size=32, num_workers=8)

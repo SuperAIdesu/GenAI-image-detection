@@ -15,12 +15,13 @@ import os
 logging.basicConfig(filename='training.log',filemode='w',level=logging.INFO, force=True)
 
 class ImageClassifier(pl.LightningModule):
-    def __init__(self):
+    def __init__(self, lmd=0):
         super().__init__()
         self.model = timm.create_model('efficientnet_b0', pretrained=True, num_classes=1)
         self.accuracy = Accuracy(task='binary', threshold=0.5)
         self.recall = Recall(task='binary', threshold=0.5)  
         self.validation_outputs = []
+        self.lmd = lmd
 
     def forward(self, x):
         return self.model(x)
@@ -33,7 +34,9 @@ class ImageClassifier(pl.LightningModule):
         print(f"Shape of labels (training): {labels.shape}")
         
         loss = F.binary_cross_entropy_with_logits(outputs, labels.float())
-        logging.info(f"Training Step - Batch loss: {loss.item()}")
+        logging.info(f"Training Step - ERM loss: {loss.item()}")
+        loss += self.lmd * (outputs ** 2).mean() # SD loss penalty
+        logging.info(f"Training Step - SD loss: {loss.item()}")
         return loss
 
     def validation_step(self, batch):
@@ -77,7 +80,7 @@ class ImageClassifier(pl.LightningModule):
         self.validation_outputs = []
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=0.0005)
         return optimizer
 
 
@@ -93,7 +96,7 @@ checkpoint_callback = ModelCheckpoint(
 
 early_stop_callback = EarlyStopping(
     monitor="val_loss",
-    patience=3,
+    patience=4,
     mode="min",
 )
 
@@ -103,8 +106,9 @@ parser.add_argument("--predict", help="predict on test set", action="store_true"
 parser.add_argument("--reset", help="reset training", action="store_true")
 args = parser.parse_args()
 
-train_domains = [0, 1, 4, 2, 3]
-val_domains = [0, 1, 4, 2, 3]
+train_domains = [0, 1, 4]
+val_domains = [0, 1, 4]
+lmd_value = 0.1
 
 if args.predict:
     test_dl = load_dataloader([0, 1, 2, 3, 4], "test", batch_size=32, num_workers=8)
@@ -128,7 +132,7 @@ else:
     if args.reset:
         model = ImageClassifier.load_from_checkpoint(args.ckpt_path)
     else:
-        model = ImageClassifier()
+        model = ImageClassifier(lmd=lmd_value)
     trainer = pl.Trainer(
         callbacks=[checkpoint_callback, early_stop_callback],
         max_steps=20000,

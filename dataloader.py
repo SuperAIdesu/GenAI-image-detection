@@ -113,7 +113,8 @@ def load_dataset(domains: list[int], split: str):
 
     laion_lister = FileLister("./data/laion400m_data", f"{split}*.tar")
     genai_lister = {d: FileLister(f"./data/genai-images/{DOMAIN_LABELS[d]}", f"{split}*.tar") for d in domains if DOMAIN_LABELS[d] != "laion"}
-    
+    weight_genai = 1 / len(genai_lister)
+
     def open_lister(lister):
         opener = FileOpener(lister, mode="b")
         return opener.load_from_tar().routed_decode().webdataset()
@@ -126,7 +127,7 @@ def load_dataset(domains: list[int], split: str):
         dp = open_lister(Concater(*all_lister)).sharding_filter()
     else:
         laion_dp = open_lister(laion_lister.shuffle()).cycle().sharding_filter().shuffle(buffer_size=buffer_size1)
-        genai_dp = {open_lister(genai_lister[d].shuffle()).cycle().sharding_filter().shuffle(buffer_size=buffer_size1): 1 for d in domains if DOMAIN_LABELS[d] != "laion"}
+        genai_dp = {open_lister(genai_lister[d].shuffle()).cycle().sharding_filter().shuffle(buffer_size=buffer_size1): weight_genai for d in domains if DOMAIN_LABELS[d] != "laion"}
         dp = SampleMultiplexer({laion_dp: 1, **genai_dp}).shuffle(buffer_size=buffer_size2)
     
     if split == "train":

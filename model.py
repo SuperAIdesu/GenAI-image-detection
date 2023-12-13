@@ -108,7 +108,7 @@ args = parser.parse_args()
 
 train_domains = [0, 1, 4]
 val_domains = [0, 1, 4]
-lmd_value = 0.1
+lmd_value = 0
 
 if args.predict:
     test_dl = load_dataloader([0, 1, 2, 3, 4], "test", batch_size=32, num_workers=8)
